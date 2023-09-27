@@ -4,7 +4,6 @@ use futures_util::stream::{self, BoxStream};
 use serde_with::serde_as;
 use tower::{
     balance::p2c::Balance,
-    buffer::{Buffer, BufferLayer},
     discover::Change,
     layer::{util::Stack, Layer},
     limit::RateLimit,
@@ -43,7 +42,7 @@ pub type TowerPartitionSink<S, B, RL, K> = PartitionBatchSink<Svc<S, RL>, B, K>;
 
 // Distributed service types
 pub type DistributedService<S, RL, HL, K, Req> = RateLimit<
-    Retry<FixedRetryPolicy<RL>, Buffer<Balance<DiscoveryService<S, RL, HL, K>, Req>, Req>>,
+    Retry<FixedRetryPolicy<RL>, Balance<DiscoveryService<S, RL, HL, K>, Req>>,
 >;
 pub type DiscoveryService<S, RL, HL, K> =
     BoxStream<'static, Result<Change<K, SingleDistributedService<S, RL, HL>>, crate::Error>>;
@@ -360,7 +359,6 @@ impl TowerRequestSettings {
 
         // Build services
         let open = OpenGauge::new();
-        let max_concurrency = services.len() * AdaptiveConcurrencySettings::max_concurrency();
         let services = services
             .into_iter()
             .map(|(endpoint, inner)| {
@@ -390,7 +388,6 @@ impl TowerRequestSettings {
         ServiceBuilder::new()
             .rate_limit(self.rate_limit_num, self.rate_limit_duration)
             .retry(policy)
-            .layer(BufferLayer::new(max_concurrency))
             .service(Balance::new(Box::pin(stream::iter(services)) as Pin<Box<_>>))
     }
 }
